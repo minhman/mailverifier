@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Email Verifier</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    progress { width: 100%; height: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Upload Emails</h1>
+  <form id="uploadForm">
+    <input type="file" id="fileInput" accept=".csv" />
+    <button type="submit">Upload</button>
+  </form>
+  <h2>Upload progress</h2>
+  <progress id="uploadProgress" max="100" value="0"></progress>
+  <h2>Verification progress</h2>
+  <div id="verifyStatus">Waiting...</div>
+  <script>
+  const form = document.getElementById('uploadForm');
+  const uploadProgress = document.getElementById('uploadProgress');
+  const statusDiv = document.getElementById('verifyStatus');
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const lines = reader.result.split(/\r?\n/).slice(1); // skip header
+      const emails = lines.filter(l => l.includes('@'));
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/upload');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          uploadProgress.value = (evt.loaded / evt.total) * 100;
+        }
+      };
+      xhr.onload = () => {
+        const evtSource = new EventSource('/events');
+        evtSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.total) {
+            statusDiv.textContent = `${data.current}/${data.total} - ${data.email} - ${data.status}`;
+          }
+          if (data.done) {
+            statusDiv.textContent = 'Verification complete';
+            evtSource.close();
+          }
+        };
+      };
+      xhr.send(JSON.stringify(emails));
+    };
+    reader.readAsText(file);
+  });
+  </script>
+</body>
+</html>
